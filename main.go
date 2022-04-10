@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"os/signal"
 
 	"github.com/urfave/cli/v2"
 	"golang.org/x/oauth2/clientcredentials"
@@ -17,7 +18,8 @@ const (
 func credentials(cliContext *cli.Context,
 	fn func(context.Context, *cli.Context, *clientcredentials.Config) error) error {
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
 	cfg := &clientcredentials.Config{
 		TokenURL: "https://sdk.iotiliti.cloud/homely/oauth/token",
@@ -38,6 +40,7 @@ func main() {
 	app.Commands = []*cli.Command{
 		locationsCommandLine(),
 		homeCommandLine(),
+		connectCommandLine(),
 	}
 
 	app.Flags = []cli.Flag{
