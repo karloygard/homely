@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -55,12 +56,28 @@ func connectCommandLine() *cli.Command {
 func connect(ctx context.Context, cliContext *cli.Context,
 	cfg *clientcredentials.Config) error {
 
+	for {
+		if err := proc(ctx, cliContext, cfg); err != nil {
+			if err == context.Canceled {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func proc(ctx context.Context, cliContext *cli.Context,
+	cfg *clientcredentials.Config) error {
+
 	token, err := cfg.Token(ctx)
 	if err != nil {
 		return err
 	}
+
 	t := transport.GetDefaultWebsocketTransport()
 	t.PingInterval = 20 * time.Second
+
+	done := make(chan error, 1)
 
 	c, err := gosocketio.Dial(
 		fmt.Sprintf("%s&locationId=%s&token=Bearer%%20%s",
@@ -81,12 +98,14 @@ func connect(ctx context.Context, cliContext *cli.Context,
 
 	if err := c.On(gosocketio.OnError, func(c *gosocketio.Channel) {
 		log.Printf("error: %v", c)
+		done <- errors.New("failed")
 	}); err != nil {
 		return err
 	}
 
 	if err := c.On(gosocketio.OnDisconnection, func(c *gosocketio.Channel) {
 		log.Println("Disconnected")
+		done <- nil
 	}); err != nil {
 		return err
 	}
@@ -98,7 +117,11 @@ func connect(ctx context.Context, cliContext *cli.Context,
 		return err
 	}
 
-	<-ctx.Done()
+	select {
+	case err := <-done:
+		return err
 
-	return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
