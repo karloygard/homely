@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -86,6 +87,15 @@ type Home struct {
 	Devices            []Device
 }
 
+func (h Home) Device(id uuid.UUID) *Device {
+	for _, d := range h.Devices {
+		if d.Id == id {
+			return &d
+		}
+	}
+	return nil
+}
+
 func homeCommandLine() *cli.Command {
 	return &cli.Command{
 		Name:  "home",
@@ -103,21 +113,25 @@ func homeCommandLine() *cli.Command {
 	}
 }
 
-func home(ctx context.Context, cliContext *cli.Context,
-	cfg *clientcredentials.Config) error {
-
-	r, err := cfg.Client(ctx).Get(
-		fmt.Sprintf("https://sdk.iotiliti.cloud/homely/home/%s",
-			cliContext.String("location")),
-	)
+func fetchHome(c *http.Client, location string) (*Home, error) {
+	r, err := c.Get(fmt.Sprintf("https://sdk.iotiliti.cloud/homely/home/%s", location))
 	if err != nil {
-		return errors.WithStack(err)
+		return nil, errors.WithStack(err)
 	}
 	defer r.Body.Close()
 
-	h := Home{}
-	if err := json.NewDecoder(r.Body).Decode(&h); err != nil {
-		return errors.WithStack(err)
+	h := &Home{}
+	if err := json.NewDecoder(r.Body).Decode(h); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return h, nil
+}
+
+func home(ctx context.Context, cliContext *cli.Context, cfg *clientcredentials.Config) error {
+	h, err := fetchHome(cfg.Client(ctx), cliContext.String("location"))
+	if err != nil {
+		return err
 	}
 
 	bytes, err := json.MarshalIndent(h, "", "  ")

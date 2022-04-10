@@ -53,9 +53,7 @@ func connectCommandLine() *cli.Command {
 	}
 }
 
-func connect(ctx context.Context, cliContext *cli.Context,
-	cfg *clientcredentials.Config) error {
-
+func connect(ctx context.Context, cliContext *cli.Context, cfg *clientcredentials.Config) error {
 	for {
 		if err := proc(ctx, cliContext, cfg); err != nil {
 			if err == context.Canceled {
@@ -66,8 +64,11 @@ func connect(ctx context.Context, cliContext *cli.Context,
 	}
 }
 
-func proc(ctx context.Context, cliContext *cli.Context,
-	cfg *clientcredentials.Config) error {
+func proc(ctx context.Context, cliContext *cli.Context, cfg *clientcredentials.Config) error {
+	h, err := fetchHome(cfg.Client(ctx), cliContext.String("location"))
+	if err != nil {
+		return err
+	}
 
 	token, err := cfg.Token(ctx)
 	if err != nil {
@@ -110,9 +111,16 @@ func proc(ctx context.Context, cliContext *cli.Context,
 		return err
 	}
 
-	if err := c.On("event", func(c *gosocketio.Channel, arg any) {
-		t, _ := json.MarshalIndent(arg, "", "  ")
-		log.Printf("event: %v", string(t))
+	if err := c.On("event", func(c *gosocketio.Channel, ev Event) {
+		if t, err := json.MarshalIndent(ev, "", "  "); err != nil {
+			log.Println(err)
+		} else {
+			if d := h.Device(ev.Data.DeviceId); d != nil {
+				log.Printf("event from device '%s': %v", d.Name, string(t))
+			} else {
+				log.Printf("event: %v", string(t))
+			}
+		}
 	}); err != nil {
 		return err
 	}
